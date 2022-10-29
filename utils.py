@@ -1,151 +1,112 @@
-import matplotlib.pyplot as plt
+# Import datasets, classifiers and performance metrics
 from sklearn.model_selection import train_test_split
-import numpy as np
-from sklearn.metrics import accuracy_score as metric
+from sklearn import datasets, svm, metrics, tree
+from joblib import dump, load
 
 
+# Dataset preprocessing function
 def preprocess_digits(dataset):
-    n_samples = len(dataset.images)
-    data = dataset.images.reshape((n_samples, -1))
-    label = dataset.target
-    return data, label
+	#PART: data pre-processing -- to remove some noise, to normalize data, format the data to be consumed by mode
+	# flatten the images
+	n_samples = len(dataset.images)
+	data = dataset.images.reshape((n_samples, -1))
+	image_data = dataset.target
+	return data, image_data
 
-# other types of preprocessing
-# - image : 8x8 : resize 16x16, 32x32, 4x4 : flatteing
-# - normalize data: mean normalization: [x - mean(X)]
-#                 - min-max normalization
-# - smoothing the image: blur on the image
-
-
-
-
-def data_viz(dataset):
-    # PART: sanity check visualization of the data
-    _, axes = plt.subplots(nrows=1, ncols=4, figsize=(10, 3))
-    for ax, image, label in zip(axes, dataset.images, dataset.target):
-        ax.set_axis_off()
-        ax.imshow(image, cmap=plt.cm.gray_r, interpolation="nearest")
-        ax.set_title("Training: %i" % label)
-
-
-# PART: Sanity check of predictions
-def pred_image_viz(x_test, predictions):
-    _, axes = plt.subplots(nrows=1, ncols=4, figsize=(10, 3))
-    for ax, image, prediction in zip(axes, x_test, predictions):
-        ax.set_axis_off()
-        image = image.reshape(8, 8)
-        ax.imshow(image, cmap=plt.cm.gray_r, interpolation="nearest")
-        ax.set_title(f"Prediction: {prediction}")
-
-
-# random split generator
-def random_split_generator(num_sets):
-    train = []
-    dev = []
-    test = []
-    for i in range(0,num_sets):
-        train_dev_test = np.array(np.random.random(3))
-        train_dev_test /= train_dev_test.sum()
-        train.append(train_dev_test[0])
-        dev.append(train_dev_test[1])
-        test.append(train_dev_test[2])
-    return train, dev, test
-
-
-# PART: define train/dev/test splits of experiment protocol
-# train to train model
-# dev to set hyperparameters of the model
-# test to evaluate the performance of the model
-
+# Define split function
 def train_dev_test_split(data, label, train_frac, dev_frac):
+	#PART: define train/dev/test splits of experiment protocol
+	# train to train model
+	# dev to set hyperparameters of the model
+	# test to evaluate the performance of the model
+	dev_test_frac = 1-train_frac
+	X_train, X_dev_test, y_train, y_dev_test = train_test_split(
+	    data, label, test_size=dev_test_frac, shuffle=True
+	)
+	X_test, X_dev, y_test, y_dev = train_test_split(
+	    X_dev_test, y_dev_test, test_size=dev_frac / dev_test_frac, shuffle=True
+	)
+	return X_train, y_train, X_dev, y_dev, X_test, y_test
+	
+# Parameter Tuning Function
+def param_tuning(clf, hyp_list_1, hyp_list_2, X_train, y_train, X_dev, y_dev, X_test, y_test):
+	#Variable for storing the current max accuracy
+	max_acc = -1
+	best_gamma = 0
+	best_c = 0
+	best_max_depth = 0
+	best_max_leaf_nodes = 0
+	
+	if type(clf) == svm.SVC:
+		for param_1 in hyp_list_1:
+			for param_2 in hyp_list_2:				
+				#PART: setting up hyperparameter
+				hyper_params = {'gamma':param_1, 'C':param_2}
+				clf.set_params(**hyper_params)
 
-    dev_test_frac = 1 - train_frac
-    x_train, x_dev_test, y_train, y_dev_test = train_test_split(
-        data, label, test_size=dev_test_frac, shuffle=True
-    )
-    x_test, x_dev, y_test, y_dev = train_test_split(
-        x_dev_test, y_dev_test, test_size=(dev_frac) / dev_test_frac, shuffle=True
-    )
+				#PART: Train model
+				# Learn the digits on the train subset
+				clf.fit(X_train, y_train)
 
-    return x_train, y_train, x_dev, y_dev, x_test, y_test
+				#PART: Get dev set predictions
+				# Predict the value of the digit on the test subset
+				predicted_dev = clf.predict(X_dev)
 
+				acc_dev = metrics.accuracy_score(y_pred=predicted_dev, y_true=y_dev)
 
-def h_param_tuning_svm(h_param_comb, clf, x_train, y_train, x_dev, y_dev):
-    best_accuracy = -1.0
-    best_model = None
-    best_h_params = None
-    # 2. For every combination-of-hyper-parameter values
-    for Gamma,c in h_param_comb:
+				#print(gamma, "," ,C, "\t", round(acc_train, 3), "\t", round(acc_dev, 3), "\t", round(acc_test, 3))
 
-        # PART: setting up hyperparameter
-        h_params = {'gamma':Gamma, 'C':c}
-        hyper_params = h_params
-        clf.set_params(**hyper_params)
+				if(acc_dev > max_acc):
+					max_acc = acc_dev
+					best_gamma = param_1
+					best_c = param_2
+		# Now get the predictions on test set with the best parameters
+		hyper_params = {'gamma':param_1, 'C':param_2}
+		clf.set_params(**hyper_params)
 
-        # PART: Train model
-        # 2.a train the model
-        # Learn the digits on the train subset
-        clf.fit(x_train, y_train)
+		#PART: Train model
+		# Learn the digits on the train subset
+		clf.fit(X_train, y_train)
 
-        # PART: get dev set predictions
-        dev_prediction = clf.predict(x_dev)
+		#PART: Get dev set predictions
+		# Predict the value of the digit on the test subset
+		predicted_test = clf.predict(X_test)
 
-        # 2.b compute the accuracy on the validation set
-        model_accuracy = metric(y_dev, dev_prediction)
+		max_acc = metrics.accuracy_score(y_pred=predicted_test, y_true=y_test)
+		return 	max_acc
+	else:
+		for param_1 in hyp_list_1:
+			for param_2 in hyp_list_2:				
+				#PART: setting up hyperparameter
+				hyper_params = {'max_depth':param_1, 'max_leaf_nodes':param_2}
+				clf.set_params(**hyper_params)
 
-        # 3. identify the combination-of-hyper-parameter for which validation set accuracy is the highest.
-        if model_accuracy > best_accuracy:
-            best_accuracy = model_accuracy
-            best_model = clf
-            best_h_params = h_params
-            print("Found new best metric for SVM with :" + str(h_params))
-            print("New best val metric for SVM:" + str(model_accuracy))
-    return best_model, best_accuracy, best_h_params
+				#PART: Train model
+				# Learn the digits on the train subset
+				clf.fit(X_train, y_train)
 
+				#PART: Get dev set predictions
+				predicted_dev = clf.predict(X_dev)
 
+				acc_dev = metrics.accuracy_score(y_pred=predicted_dev, y_true=y_dev)
 
+				if(acc_dev > max_acc):
+					max_acc = acc_dev
+					best_max_depth = param_1
+					best_max_leaf_nodes = param_2
+					
+		# Now get the predictions on test set with the best parameters
+		hyper_params = {'max_depth':param_1, 'max_leaf_nodes':param_2}
+		clf.set_params(**hyper_params)
 
-def h_param_tuning_dect(h_param_comb, clf, x_train, y_train, x_dev, y_dev):
-    best_accuracy = -1.0
-    best_model = None
-    best_h_params = None
-    # 2. For every combination-of-hyper-parameter values
-    for Criterion, Splitter in h_param_comb:
+		#PART: Train model
+		# Learn the digits on the train subset
+		clf.fit(X_train, y_train)
 
-        # PART: setting up hyperparameter
-        h_params = {'criterion':Criterion, 'splitter':Splitter}
-        hyper_params = h_params
-        clf.set_params(**hyper_params)
+		#PART: Get dev set predictions
+		# Predict the value of the digit on the test subset
+		predicted_test = clf.predict(X_test)
 
-        # PART: Train model
-        # 2.a train the model
-        # Learn the digits on the train subset
-        clf.fit(x_train, y_train)
-
-        # print(cur_h_params)
-        # PART: get dev set predictions
-        dev_prediction = clf.predict(x_dev)
-
-        # 2.b compute the accuracy on the validation set
-        model_accuracy = metric(y_dev, dev_prediction)
-
-        # 3. identify the combination-of-hyper-parameter for which validation set accuracy is the highest.
-        if model_accuracy > best_accuracy:
-            best_accuracy = model_accuracy
-            best_model = clf
-            best_h_params = h_params
-            print("Found new best metric for Decision Tree Classifier with :" + str(h_params))
-            print("New best val metric for Decision Tree Classifier:" + str(model_accuracy))
-    return best_model, best_accuracy, best_h_params
-
-def get_accuracy(y_test, predicted):
-    accuracy = metric(y_test, predicted)
-    return accuracy
-
-
-def get_mean(arr):
-    _mean = np.mean(np.array(arr))
-    return _mean
-def get_std(arr):
-    _std = np.std(np.array(arr))
-    return _std
+		max_acc = metrics.accuracy_score(y_pred=predicted_test, y_true=y_test)
+		return 	max_acc
+	
