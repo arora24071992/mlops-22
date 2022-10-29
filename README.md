@@ -1,6 +1,7 @@
 Output of python plot_graphs.py
 
-Run	          SVM			       Decsion_Tree	
+```
+Run	     SVM		   Decsion_Tree	
 
  1 	    0.987012987012987 	 0.8200371057513914 
 
@@ -21,3 +22,5 @@ Mean	   0.9849666694812954 	 0.8298140461675017
 
 
 StdDev	  0.007200357801801396 	 0.019296581628004243 
+
+```
